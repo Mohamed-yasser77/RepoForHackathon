@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Docker Compose — Smart-Support Milestone 2
+# ─────────────────────────────────────────────────────────────────────────────
+# Services:
+#   web    — FastAPI server (accepts tickets, returns 202)
+#   worker — ARQ background worker (ML inference + webhook alerts)
+#
+# Note: Redis has been moved to a Cloud Database (Upstash).
+# The REDIS_URL is provided via the .env file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── FastAPI Web Server ──────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartsupport-web
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level info --access-log
+    ports:
+      - "8000:8000"
+    environment:
+      - WEBHOOK_URL=https://httpbin.org/post
+      - URGENCY_THRESHOLD=0.8
+      - REDLOCK_TTL_MS=5000
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - smartsupport
+
+  # ── ARQ Background Worker ──────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartsupport-worker
+    command: arq app.worker.WorkerSettings
+    environment:
+      - WEBHOOK_URL=https://httpbin.org/post
+      - URGENCY_THRESHOLD=0.8
+      - LOG_LEVEL=INFO
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - smartsupport
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  smartsupport:
+    driver: bridge
