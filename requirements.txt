@@ -6,3 +6,7 @@ numpy
 pandas
 kagglehub
 python-dotenv
+mlflow
+matplotlib
+seaborn
+scipy

@@ -19,24 +19,67 @@ import os
 import math
 import pickle
 import re
+import json
 from collections import Counter, defaultdict
-from typing import Dict, List, Tuple
+from dataclasses import dataclass, field, asdict
+from typing import Dict, List, Tuple, Optional
 
 import numpy as np
+import mlflow
+import mlflow.sklearn
+import matplotlib
+matplotlib.use("Agg")          # non-interactive backend for headless runs
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import BernoulliNB
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    accuracy_score,
+    precision_recall_fscore_support,
+)
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
 CATEGORIES = ["Billing", "Technical", "Legal"]
 # Absolute path so the pickle is always written next to this file,
 # regardless of which directory the process is launched from.
-MODEL_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ensemble_ir_model.pkl")
+_BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH  = os.path.join(_BASE_DIR, "ensemble_ir_model.pkl")
+CHARTS_DIR  = os.path.join(_BASE_DIR, "mlruns_charts")
+os.makedirs(CHARTS_DIR, exist_ok=True)
+
+MLFLOW_EXPERIMENT = "SmartSupport-TicketRouter"
+
+
+# ─── Hyperparameter Configuration ────────────────────────────────────────────
+
+@dataclass
+class HyperParams:
+    """All tunable knobs in one place — pass to EnsembleIRClassifier."""
+    # Ensemble weights
+    w_tfidf_lr: float = 0.65
+    w_bim:      float = 0.00
+    w_bm25:     float = 0.35
+    # TF-IDF + LogReg
+    tfidf_max_features: int   = 50_000
+    tfidf_ngram_max:    int   = 3
+    tfidf_sublinear_tf: bool  = True
+    logreg_C:           float = 5.0
+    logreg_max_iter:    int   = 2000
+    # BIM
+    bim_max_features:   int   = 25_000
+    bim_alpha:          float = 0.5
+    # BM25
+    bm25_k1:            float = 1.5
+    bm25_b:             float = 0.75
+    # Seed repetitions
+    bt_seed_reps:       int   = 5
 
 # ─── Kaggle Dataset Config ───────────────────────────────────────────────────
 # Waseem Alastal's dataset columns we actually use:
@@ -326,7 +369,7 @@ class BM25CategoryScorer:
         self.b  = b
         self.category_tf:  Dict[str, Counter] = {}
         self.category_len: Dict[str, int]     = {}
-        self.df:           Counter             = Counter()
+        self.df_counts:    Counter             = Counter()
         self.N:            int                 = 0
         self.avg_dl:       float               = 0.0
 
@@ -341,14 +384,14 @@ class BM25CategoryScorer:
             self.category_len[cat] = len(tokens)
             all_lengths.append(len(tokens))
             for term in set(tokens):
-                self.df[term] += 1
+                self.df_counts[term] += 1
 
         self.N      = len(cat_tokens)
         self.avg_dl = float(np.mean(all_lengths)) if all_lengths else 1.0
 
     def _idf(self, term: str) -> float:
-        df = self.df.get(term, 0)
-        return math.log((self.N - df + 0.5) / (df + 0.5) + 1)
+        df_val = self.df_counts.get(term, 0)
+        return math.log((self.N - df_val + 0.5) / (df_val + 0.5) + 1)
 
     def _bm25_score(self, query_tokens: List[str], cat: str) -> float:
         tf_map = self.category_tf.get(cat, {})
@@ -382,7 +425,7 @@ class BIMClassifier:
     which is the canonical BIM document representation.
     """
 
-    def __init__(self):
+    def __init__(self, max_features: int = 25_000, alpha: float = 0.5):
         self.pipe = Pipeline([
             ("vec", TfidfVectorizer(
                 analyzer="word",
@@ -390,9 +433,9 @@ class BIMClassifier:
                 ngram_range=(1, 2),
                 min_df=2,
                 sublinear_tf=False,
-                max_features=25_000,
+                max_features=max_features,
             )),
-            ("clf", BernoulliNB(alpha=0.5)),
+            ("clf", BernoulliNB(alpha=alpha)),
         ])
         self.le = LabelEncoder()
 
@@ -414,18 +457,19 @@ class TFIDFLogisticClassifier:
     class_weight='balanced' compensates for Legal class being smaller.
     """
 
-    def __init__(self):
+    def __init__(self, max_features: int = 50_000, ngram_max: int = 3,
+                 sublinear_tf: bool = True, C: float = 5.0, max_iter: int = 2000):
         self.pipe = Pipeline([
             ("vec", TfidfVectorizer(
                 analyzer="word",
-                ngram_range=(1, 3),
+                ngram_range=(1, ngram_max),
                 min_df=2,
-                sublinear_tf=True,
-                max_features=50_000,
+                sublinear_tf=sublinear_tf,
+                max_features=max_features,
             )),
             ("clf", LogisticRegression(
-                max_iter=2000,
-                C=5.0,
+                max_iter=max_iter,
+                C=C,
                 solver="lbfgs",
                 class_weight="balanced",
             )),
@@ -447,18 +491,29 @@ class TFIDFLogisticClassifier:
 class EnsembleIRClassifier:
     """
     Weighted soft-voting ensemble over three IR models.
-    Weights were tuned on held-out validation data:
-      TF-IDF + LogReg → 0.45  (strong discriminative learner)
-      BIM             → 0.25  (probabilistic IR; robust on short texts)
-      BM25            → 0.30  (length-normalised IR scoring)
+    Weights are configurable via HyperParams.
+    Every training run is tracked in MLflow.
     """
 
-    WEIGHTS = {"tfidf_lr": 0.65, "bim": 0.00, "bm25": 0.35}
-
-    def __init__(self):
-        self.tfidf_lr = TFIDFLogisticClassifier()
-        self.bim      = BIMClassifier()
-        self.bm25     = BM25CategoryScorer()
+    def __init__(self, hp: Optional[HyperParams] = None):
+        self.hp = hp or HyperParams()
+        self.WEIGHTS = {
+            "tfidf_lr": self.hp.w_tfidf_lr,
+            "bim":      self.hp.w_bim,
+            "bm25":     self.hp.w_bm25,
+        }
+        self.tfidf_lr = TFIDFLogisticClassifier(
+            max_features=self.hp.tfidf_max_features,
+            ngram_max=self.hp.tfidf_ngram_max,
+            sublinear_tf=self.hp.tfidf_sublinear_tf,
+            C=self.hp.logreg_C,
+            max_iter=self.hp.logreg_max_iter,
+        )
+        self.bim = BIMClassifier(
+            max_features=self.hp.bim_max_features,
+            alpha=self.hp.bim_alpha,
+        )
+        self.bm25     = BM25CategoryScorer(k1=self.hp.bm25_k1, b=self.hp.bm25_b)
         self._trained = False
 
     # ── Training ──────────────────────────────────────────────────────────────
@@ -476,19 +531,120 @@ class EnsembleIRClassifier:
         self._trained = True
         print("[Classifier] ✓ All three models trained.")
 
-    def evaluate(self, texts: List[str], labels: List[str]):
-        """Train on 80%, evaluate on 20%, print precision/recall/F1 per class."""
+    def evaluate(
+        self,
+        texts: List[str],
+        labels: List[str],
+        log_mlflow: bool = True,
+    ) -> Dict[str, float]:
+        """
+        Train on 80%, evaluate on 20%, log metrics + artefacts to MLflow.
+        Returns a dict of key metrics.
+        """
         print("[Classifier] Running 80/20 evaluation split …")
         X_tr, X_te, y_tr, y_te = train_test_split(
             texts, labels, test_size=0.2, random_state=42, stratify=labels
         )
-        eval_clf = EnsembleIRClassifier()
+        eval_clf = EnsembleIRClassifier(hp=self.hp)
         eval_clf.train(X_tr, y_tr)
-        preds = [eval_clf.predict(t)[0] for t in X_te]
 
+        preds       = [eval_clf.predict(t)[0] for t in X_te]
+        confidences = [eval_clf.predict(t)[1] for t in X_te]
+
+        # ── Metrics ───────────────────────────────────────────────────────
+        acc = accuracy_score(y_te, preds)
+        prec, rec, f1, sup = precision_recall_fscore_support(
+            y_te, preds, labels=CATEGORIES, average=None, zero_division=0
+        )
+        prec_w, rec_w, f1_w, _ = precision_recall_fscore_support(
+            y_te, preds, average="weighted", zero_division=0
+        )
+        prec_m, rec_m, f1_m, _ = precision_recall_fscore_support(
+            y_te, preds, average="macro", zero_division=0
+        )
+
+        metrics: Dict[str, float] = {
+            "accuracy": round(acc, 4),
+            "weighted_precision": round(float(prec_w), 4),
+            "weighted_recall":    round(float(rec_w), 4),
+            "weighted_f1":        round(float(f1_w), 4),
+            "macro_precision":    round(float(prec_m), 4),
+            "macro_recall":       round(float(rec_m), 4),
+            "macro_f1":           round(float(f1_m), 4),
+        }
+        for i, cat in enumerate(CATEGORIES):
+            metrics[f"{cat}_precision"] = round(float(prec[i]), 4)
+            metrics[f"{cat}_recall"]    = round(float(rec[i]), 4)
+            metrics[f"{cat}_f1"]        = round(float(f1[i]), 4)
+
+        # ── Console report ────────────────────────────────────────────────
+        report_str = classification_report(
+            y_te, preds, target_names=CATEGORIES, digits=4
+        )
         print("\n[Classifier] ── Evaluation Report (20% held-out) ─────────────")
-        print(classification_report(y_te, preds, target_names=CATEGORIES, digits=4))
+        print(report_str)
         print("──────────────────────────────────────────────────────────────\n")
+
+        # ── MLflow logging ────────────────────────────────────────────────
+        if log_mlflow:
+            mlflow.log_metrics(metrics)
+
+            # Save classification report as text artefact
+            report_path = os.path.join(CHARTS_DIR, "classification_report.txt")
+            with open(report_path, "w") as f:
+                f.write(report_str)
+            mlflow.log_artifact(report_path)
+
+            # ── Confusion Matrix Plot ─────────────────────────────────────
+            cm = confusion_matrix(y_te, preds, labels=CATEGORIES)
+            fig, ax = plt.subplots(figsize=(7, 5))
+            sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                        xticklabels=CATEGORIES, yticklabels=CATEGORIES, ax=ax)
+            ax.set_xlabel("Predicted")
+            ax.set_ylabel("Actual")
+            ax.set_title("Confusion Matrix (20% held-out)")
+            fig.tight_layout()
+            cm_path = os.path.join(CHARTS_DIR, "confusion_matrix.png")
+            fig.savefig(cm_path, dpi=150)
+            plt.close(fig)
+            mlflow.log_artifact(cm_path)
+
+            # ── Per-class P/R/F1 Bar Chart ────────────────────────────────
+            fig2, ax2 = plt.subplots(figsize=(8, 5))
+            x_pos = np.arange(len(CATEGORIES))
+            w = 0.25
+            ax2.bar(x_pos - w, prec, w, label="Precision", color="#4C72B0")
+            ax2.bar(x_pos,     rec,  w, label="Recall",    color="#55A868")
+            ax2.bar(x_pos + w, f1,   w, label="F1-Score",  color="#C44E52")
+            ax2.set_xticks(x_pos)
+            ax2.set_xticklabels(CATEGORIES)
+            ax2.set_ylim(0, 1.05)
+            ax2.set_ylabel("Score")
+            ax2.set_title("Per-Class Precision / Recall / F1")
+            ax2.legend()
+            fig2.tight_layout()
+            prf_path = os.path.join(CHARTS_DIR, "per_class_prf.png")
+            fig2.savefig(prf_path, dpi=150)
+            plt.close(fig2)
+            mlflow.log_artifact(prf_path)
+
+            # ── Confidence Distribution ───────────────────────────────────
+            fig3, ax3 = plt.subplots(figsize=(7, 4))
+            for cat in CATEGORIES:
+                cat_confs = [c for c, p in zip(confidences, preds) if p == cat]
+                if cat_confs:
+                    ax3.hist(cat_confs, bins=20, alpha=0.55, label=cat)
+            ax3.set_xlabel("Prediction Confidence")
+            ax3.set_ylabel("Count")
+            ax3.set_title("Confidence Distribution by Predicted Category")
+            ax3.legend()
+            fig3.tight_layout()
+            conf_path = os.path.join(CHARTS_DIR, "confidence_distribution.png")
+            fig3.savefig(conf_path, dpi=150)
+            plt.close(fig3)
+            mlflow.log_artifact(conf_path)
+
+        return metrics
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
@@ -497,10 +653,11 @@ class EnsembleIRClassifier:
             pickle.dump(self, f)
         print(f"[Classifier] Model cached → {path}")
 
-    def load_or_train(self, force_retrain: bool = False):
+    def load_or_train(self, force_retrain: bool = False, log_mlflow: bool = True):
         """
         Load a previously saved model from disk, or train a fresh one.
         Set force_retrain=True to ignore the cache and retrain from scratch.
+        When log_mlflow=True, wraps training in an MLflow run.
         """
         if not force_retrain and os.path.exists(MODEL_PATH):
             try:
@@ -517,11 +674,32 @@ class EnsembleIRClassifier:
 
         texts, labels = load_dataset()
 
-        if len(texts) >= 80:
-            self.evaluate(texts, labels)   # unbiased metrics on held-out split
+        if log_mlflow:
+            mlflow.set_experiment(MLFLOW_EXPERIMENT)
+            with mlflow.start_run(run_name="train-production"):
+                # Log hyperparams
+                mlflow.log_params(asdict(self.hp))
+                mlflow.log_param("corpus_size", len(texts))
+                dist = Counter(labels)
+                for cat in CATEGORIES:
+                    mlflow.log_param(f"corpus_{cat}", dist.get(cat, 0))
 
-        self.train(texts, labels)          # train on full corpus for production
-        self.save()
+                # Evaluate (logs metrics + charts inside)
+                if len(texts) >= 80:
+                    self.evaluate(texts, labels, log_mlflow=True)
+
+                # Train on full corpus for production
+                self.train(texts, labels)
+                self.save()
+
+                # Log model pickle as artifact
+                mlflow.log_artifact(MODEL_PATH)
+                print(f"[MLflow] Run logged to experiment '{MLFLOW_EXPERIMENT}'")
+        else:
+            if len(texts) >= 80:
+                self.evaluate(texts, labels, log_mlflow=False)
+            self.train(texts, labels)
+            self.save()
 
     # ── Inference ─────────────────────────────────────────────────────────────
 
