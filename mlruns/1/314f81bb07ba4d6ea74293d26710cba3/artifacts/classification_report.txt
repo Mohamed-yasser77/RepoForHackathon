@@ -1,0 +1,9 @@
+              precision    recall  f1-score   support
+
+     Billing     0.6125    0.6326    0.6224      1037
+   Technical     1.0000    1.0000    1.0000        46
+       Legal     0.4262    0.4054    0.4156       698
+
+    accuracy                         0.5531      1781
+   macro avg     0.6796    0.6793    0.6793      1781
+weighted avg     0.5495    0.5531    0.5511      1781
