@@ -64,16 +64,54 @@ export default function TicketForm({ onClose }: TicketFormProps) {
                         }}>
                             {result.duplicate ? 'Duplicate Detected' : 'Ticket Accepted'}
                         </div>
+                        
+                        {!result.duplicate && (
+                            <div style={{ marginBottom: 20 }}>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+                                    Our AI has successfully routed your ticket.
+                                </p>
+                                <div className="grid-2-rows" style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 16, border: '1px solid var(--border-subtle)', textAlign: 'left' }}>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>AI Category</span>
+                                        <span className="badge badge-purple" style={{ margin: 0 }}>{result.category}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Urgency Level</span>
+                                        <span className={`badge ${result.urgency === 'HIGH' ? 'badge-red' : result.urgency === 'MEDIUM' ? 'badge-orange' : 'badge-green'}`} style={{ margin: 0 }}>
+                                            {result.urgency}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Queue Position</span>
+                                        <span className="font-mono" style={{ fontWeight: 700, color: 'var(--accent-green)' }}>#{result.queue_position}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center mb-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 12 }}>
+                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Assigned Agent</span>
+                                        <span style={{ fontWeight: 600, color: result.routed_to ? 'var(--text-primary)' : 'var(--accent-orange)' }}>
+                                            {result.routed_to || 'Pending Pool'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>CSP Match Score</span>
+                                        <span className="font-mono" style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
+                                            {(result.routing_score * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
                             {result.message}
                         </p>
+                        
                         {result.duplicate && (
                             <div className="badge badge-orange" style={{ marginTop: 12, display: 'inline-flex' }}>
-                                Redlock: Duplicate within 5s window
+                                Redlock: Duplicate in session
                             </div>
                         )}
                         <div style={{ marginTop: 24 }}>
-                            <button className="btn btn-ghost" onClick={onClose}>Close</button>
+                            <button className="btn btn-primary" onClick={onClose} style={{ width: '100%' }}>Done</button>
                         </div>
                     </div>
                 ) : (

@@ -22,7 +22,7 @@ export default function AgentCard({ agent, onRelease, onDelete, actionLoading }:
     const isLoading = actionLoading === agent.agent_id;
 
     return (
-        <div className="card card-purple reveal" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="card card-purple" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Header */}
             <div className="flex items-center gap-3" style={{ justifyContent: 'space-between' }}>
                 <div className="flex items-center gap-3">
@@ -84,6 +84,36 @@ export default function AgentCard({ agent, onRelease, onDelete, actionLoading }:
                     />
                 ))}
             </div>
+
+            {/* Assigned Tickets */}
+            {agent.assigned_tickets && agent.assigned_tickets.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14 }}>
+                    <div className="flex items-center gap-2 mb-3">
+                        <CheckCircle size={12} color="var(--accent-green)" />
+                        <span className="text-xs text-muted font-semibold" style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}>Currently Handling</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {agent.assigned_tickets.map((t, idx) => (
+                            <div key={idx} style={{ 
+                                background: 'rgba(255,255,255,0.03)', 
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: 8,
+                                padding: '8px 10px',
+                            }}>
+                                <div className="flex justify-between items-start mb-1">
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {t.subject}
+                                    </span>
+                                    <span className={`badge ${t.urgency === 'HIGH' ? 'badge-red' : t.urgency === 'MEDIUM' ? 'badge-orange' : 'badge-green'}`} style={{ fontSize: 8, padding: '1px 5px' }}>
+                                        {t.urgency}
+                                    </span>
+                                </div>
+                                <div className="font-mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>{t.ticket_id}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Actions */}
             {(onRelease || onDelete) && (

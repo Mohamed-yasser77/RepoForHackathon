@@ -1,1 +1,5 @@
 venv/
+backend/myenv/
+*.pkl
+agents_out.json
+*__pycache__*

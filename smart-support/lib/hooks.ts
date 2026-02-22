@@ -4,7 +4,7 @@
 // =============================================================================
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getHealth, getIncidents, getAgents, submitTicket, registerAgent, releaseAgent, deleteAgent } from './api';
-import type { HealthResponse, IncidentsResponse, AgentsResponse, TicketPayload, AgentPayload } from '@/types';
+import type { HealthResponse, IncidentsResponse, AgentsResponse, TicketPayload, AgentPayload, TicketResponse } from '@/types';
 
 // ── Generic polling hook ──────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ export function useAgents(interval = 8_000) {
 
 export function useSubmitTicket() {
     const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<{ success: boolean; duplicate?: boolean; message?: string } | null>(null);
+    const [result, setResult] = useState<TicketResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const submit = useCallback(async (payload: TicketPayload) => {
@@ -70,7 +70,7 @@ export function useSubmitTicket() {
         setError(null);
         try {
             const res = await submitTicket(payload);
-            setResult({ success: true, duplicate: res.duplicate, message: res.message });
+            setResult(res);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : 'Failed to submit ticket');
             setResult(null);

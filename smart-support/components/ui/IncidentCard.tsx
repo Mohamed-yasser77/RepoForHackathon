@@ -19,7 +19,7 @@ export default function IncidentCard({ incident }: IncidentCardProps) {
     }[severity];
 
     return (
-        <div className="card card-orange reveal">
+        <div className="card card-orange">
             {/* Header */}
             <div className="flex items-center" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
                 <div className="flex items-center gap-2">

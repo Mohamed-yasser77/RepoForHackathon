@@ -24,8 +24,9 @@ export default function AgentsPage() {
     const [success, setSuccess] = useState(false);
 
     const totalAgents = data?.total ?? 0;
-    const onlineCount = data?.agents.filter((a) => a.active_tickets < a.max_capacity).length ?? 0;
-    const atCapacity = data?.agents.filter((a) => a.active_tickets >= a.max_capacity).length ?? 0;
+    const agents = data?.agents ?? [];
+    const onlineCount = agents.filter((a) => a.active_tickets < a.max_capacity).length;
+    const atCapacity = agents.filter((a) => a.active_tickets >= a.max_capacity).length;
 
     const handleSkillChange = (skill: keyof typeof form.skills, val: string) => {
         setForm(f => ({ ...f, skills: { ...f.skills, [skill]: parseFloat(val) } }));
@@ -133,7 +134,7 @@ export default function AgentsPage() {
                     </div>
                 )}
 
-                {!loading && !error && (data?.agents.length === 0 ? (
+                {!loading && !error && (agents.length === 0 ? (
                     <div className="card" style={{ textAlign: 'center', padding: 64 }}>
                         <User size={40} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
                         <h3 style={{ fontWeight: 700, fontSize: 18, marginBottom: 8 }}>No Agents Registered</h3>
@@ -142,7 +143,7 @@ export default function AgentsPage() {
                     </div>
                 ) : (
                     <div className="grid-3">
-                        {data?.agents.map((agent) => (
+                        {agents.map((agent) => (
                             <AgentCard
                                 key={agent.agent_id}
                                 agent={agent}

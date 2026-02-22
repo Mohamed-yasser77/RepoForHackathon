@@ -35,6 +35,10 @@ export interface TicketResponse {
     queue_position: number;
     classifier_votes: Record<string, number>;
     timestamp: number;
+    // routing fields (CSP)
+    routed_to: string | null;
+    routing_score: number;
+    routing_reason: string | null;
 }
 
 // ── Incidents ─────────────────────────────────────────────────────────────────
@@ -68,6 +72,7 @@ export interface Agent {
     skills: AgentSkills;
     max_capacity: number;
     active_tickets: number;
+    assigned_tickets: any[];
 }
 
 export interface AgentsResponse {

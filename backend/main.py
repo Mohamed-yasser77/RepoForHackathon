@@ -109,6 +109,10 @@ class TicketResponse(BaseModel):
     queue_position:   int
     classifier_votes: dict
     timestamp:        float
+    # Routing fields
+    routed_to:        Optional[str] = None
+    routing_score:    float = 0.0
+    routing_reason:   Optional[str] = None
 
 
 # ── Agents ──
@@ -130,6 +134,7 @@ class Agent(BaseModel):
     skills:         AgentSkills
     max_capacity:   int
     active_tickets: int = 0
+    assigned_tickets: List[dict] = []
 
 class AgentsResponse(BaseModel):
     agents: List[Agent]
@@ -138,6 +143,7 @@ class AgentsResponse(BaseModel):
 class ReleaseResponse(BaseModel):
     agent_id:       str
     active_tickets: int
+    assigned_tickets: List[dict] = []
 
 
 # ── Incidents ──
@@ -152,7 +158,6 @@ class Incident(BaseModel):
 class IncidentsResponse(BaseModel):
     incidents: List[Incident]
     total:     int
-
 
 # ─── Urgency Heuristic ────────────────────────────────────────────────────────
 
@@ -184,6 +189,54 @@ def compute_urgency(text: str) -> tuple[str, float]:
         return "MEDIUM", 0.30
     return "LOW", 0.10
 
+# ─── Skill-Based Router (CSP) Logic ───────────────────────────────────────────
+
+def find_best_agent(category: str, urgency: str) -> dict:
+    """
+    Constraint-Optimization Router (CSP).
+    Finds the best available agent based on skill match and remaining capacity.
+    """
+    bonus = {"HIGH": 0.2, "MEDIUM": 0.1, "LOW": 0.0}.get(urgency, 0.0)
+    
+    best_agent_id = None
+    best_score = -1.0
+    reason = "no agents available"
+    
+    # Sort by agent_id for deterministic tie-breaking
+    sorted_agent_ids = sorted(_agents.keys())
+    
+    for aid in sorted_agent_ids:
+        agent = _agents[aid]
+        
+        # 1. Capacity Constraint
+        if agent["active_tickets"] >= agent["max_capacity"]:
+            continue
+            
+        # 2. Scoring (Skill + Capacity + Urgency)
+        cap_weight = (agent["max_capacity"] - agent["active_tickets"]) / agent["max_capacity"]
+        skill_score = agent["skills"].get(category, 0.5) # Default to 0.5 if category unknown
+        
+        # CSP Objective Function:
+        score = (skill_score * cap_weight) + (bonus * cap_weight)
+        
+        if score > best_score:
+            best_score = score
+            best_agent_id = aid
+            reason = "best skill/capacity match"
+
+    if best_agent_id:
+        return {
+            "agent_id": best_agent_id,
+            "score": round(best_score, 4),
+            "reason": reason
+        }
+    
+    return {
+        "agent_id": None,
+        "score": 0.0,
+        "reason": "all agents at capacity" if _agents else "no agents registered"
+    }
+
 
 # ─── Routes — System ──────────────────────────────────────────────────────────
 
@@ -214,6 +267,7 @@ def submit_ticket(req: TicketRequest):
     - Classifies into Billing / Technical / Legal using the IR ensemble.
     - Assigns urgency via regex heuristic.
     - Pushes onto the priority heap (HIGH first).
+    - Routes to the best available agent via CSP scoring.
     """
     full_text = f"{req.subject} {req.body}"
 
@@ -231,11 +285,25 @@ def submit_ticket(req: TicketRequest):
     # 3. Urgency
     urgency_label, urgency_score = compute_urgency(full_text)
 
-    # 4. Heap priority: HIGH=1, MEDIUM=2, LOW=3
+    # 4. Routing (CSP)
+    routing = find_best_agent(category, urgency_label)
+    if routing["agent_id"]:
+        agent = _agents[routing["agent_id"]]
+        agent["active_tickets"] += 1
+        # Store metadata for display
+        agent["assigned_tickets"].append({
+            "ticket_id": effective_id,
+            "subject": req.subject,
+            "category": category,
+            "urgency": urgency_label,
+            "timestamp": time.time()
+        })
+
+    # 5. Heap priority: HIGH=1, MEDIUM=2, LOW=3
     priority_map = {"HIGH": 1, "MEDIUM": 2, "LOW": 3}
     priority     = priority_map[urgency_label]
 
-    # 5. Enqueue (even duplicates get classified, just flagged)
+    # 6. Enqueue
     ticket_id = effective_id
     timestamp = time.time()
     payload   = {
@@ -250,12 +318,13 @@ def submit_ticket(req: TicketRequest):
         "channel":       req.channel,
         "timestamp":     timestamp,
         "duplicate":     is_duplicate,
+        "routed_to":     routing["agent_id"],
     }
 
     queue: PriorityQueueSingleton = app.state.queue
     pos = queue.push(priority, timestamp, payload)
 
-    # 6. Auto-create incident if we detect a flash-flood pattern
+    # 7. Auto-create incident if we detect a flash-flood pattern
     _maybe_create_incident(category, urgency_label, full_text)
 
     return TicketResponse(
@@ -264,7 +333,7 @@ def submit_ticket(req: TicketRequest):
         message          = (
             "Ticket already submitted in this session — marked as duplicate."
             if is_duplicate
-            else f"Ticket enqueued for processing. Queue position: {pos}."
+            else f"Ticket enqueued. Routed to {routing['agent_id'] or 'None'}."
         ),
         duplicate        = is_duplicate,
         category         = category,
@@ -274,6 +343,9 @@ def submit_ticket(req: TicketRequest):
         queue_position   = pos,
         classifier_votes = votes,
         timestamp        = timestamp,
+        routed_to        = routing["agent_id"],
+        routing_score    = routing["score"],
+        routing_reason   = routing["reason"],
     )
 
 
@@ -309,12 +381,14 @@ def list_agents():
 @app.post("/agents", response_model=Agent, status_code=201, tags=["Agents"])
 def register_agent(payload: AgentPayload):
     """Register a new agent (or update if agent_id already exists)."""
+    existing = _agents.get(payload.agent_id, {})
     agent_data = {
         "agent_id":       payload.agent_id,
         "name":           payload.name,
         "skills":         payload.skills.model_dump(),
         "max_capacity":   payload.max_capacity,
-        "active_tickets": _agents.get(payload.agent_id, {}).get("active_tickets", 0),
+        "active_tickets": existing.get("active_tickets", 0),
+        "assigned_tickets": existing.get("assigned_tickets", []),
     }
     _agents[payload.agent_id] = agent_data
     return Agent(**agent_data)
@@ -335,7 +409,16 @@ def release_agent(agent_id: str):
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
     agent = _agents[agent_id]
     agent["active_tickets"] = max(0, agent["active_tickets"] - 1)
-    return ReleaseResponse(agent_id=agent_id, active_tickets=agent["active_tickets"])
+    
+    # Remove the oldest ticket if list isn't empty
+    if agent["assigned_tickets"]:
+        agent["assigned_tickets"].pop(0)
+        
+    return ReleaseResponse(
+        agent_id=agent_id, 
+        active_tickets=agent["active_tickets"],
+        assigned_tickets=agent["assigned_tickets"]
+    )
 
 
 @app.delete("/agents/{agent_id}", status_code=204, tags=["Agents"])
@@ -370,7 +453,7 @@ _window_counts: Dict[str, List[float]] = {}
 
 def _maybe_create_incident(category: str, urgency: str, sample_text: str):
     """
-    Create or update a master incident when ≥3 HIGH-urgency tickets of the same
+    Create or update a master incident when ≥10 HIGH-urgency tickets of the same
     category arrive within 5 minutes (simplified flash-flood detector for MVR).
     """
     if urgency != "HIGH":
@@ -386,7 +469,7 @@ def _maybe_create_incident(category: str, urgency: str, sample_text: str):
     _window_counts[key] = timestamps
 
     count = len(timestamps)
-    if count >= 3:
+    if count >= 10:
         # Stable hash ID so the same flood maps to the same incident
         inc_id = "INC-" + hashlib.md5(key.encode()).hexdigest()[:8].upper()
         if inc_id in _incidents:
