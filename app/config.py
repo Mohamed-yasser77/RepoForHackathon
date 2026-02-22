@@ -1,5 +1,5 @@
 """
-Application Configuration — Milestone 2
+Application Configuration — Milestone 3
 ========================================
 Centralised settings via pydantic-settings.
 All values are overridable via environment variables or .env file.
@@ -48,9 +48,35 @@ class Settings(BaseSettings):
         description="ARQ task queue name",
     )
 
+    # ── Milestone 3: Flash-Flood / Semantic Dedup ───────────────────────────
+    FLASH_FLOOD_WINDOW_SECS: int = Field(
+        default=300,
+        description="Redis rolling window (seconds) for similarity lookups",
+    )
+    FLASH_FLOOD_SIM_THRESHOLD: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description="Cosine similarity threshold for considering tickets similar",
+    )
+    FLASH_FLOOD_COUNT_THRESHOLD: int = Field(
+        default=10,
+        description="Number of similar tickets within window that triggers a flood",
+    )
+
+    # ── Milestone 3: Circuit Breaker ─────────────────────────────────────────
+    CIRCUIT_BREAKER_LATENCY_MS: int = Field(
+        default=500,
+        description="EWMA latency ceiling (ms) before circuit trips to OPEN",
+    )
+    CIRCUIT_BREAKER_COOLDOWN_SECS: int = Field(
+        default=30,
+        description="Seconds in OPEN state before attempting HALF_OPEN probe",
+    )
+
     # ── Server ────────────────────────────────────────────────────────────
-    APP_NAME: str = "Smart-Support Milestone 2"
-    APP_VERSION: str = "2.0.0"
+    APP_NAME: str = "Smart-Support Milestone 3"
+    APP_VERSION: str = "3.0.0"
     LOG_LEVEL: str = "INFO"
 
     model_config = {
