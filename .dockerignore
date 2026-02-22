@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .dockerignore — Smart-Support Milestone 2
+# ─────────────────────────────────────────────────────────────────────────────
+# Prevents unnecessary experimentation, testing, and ML tracking files 
+# from being copied into the Docker container, drastically reducing size.
+
+# Git and OS
+.git
+.gitignore
+.DS_Store
+
+# Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# MLOps & Experimentation (Exclude these)
+mlruns/
+mlruns_charts/
+mlflow.db
+mlops_dashboard.py
+
+# Validation, Testing & Demo Scripts
+run_experiments.py
+download_and_train.py
+test_mvr.py
+demo_concurrency.py
+
+# Documentation
+setup_local.md

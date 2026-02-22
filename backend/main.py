@@ -38,7 +38,7 @@ _submitted_ticket_ids: set = set()   # for duplicate detection
 async def lifespan(app: FastAPI):
     print("[Startup] Initialising ensemble classifier …")
     clf = EnsembleIRClassifier()
-    clf.load_or_train()
+    clf.load_or_train()                         # kagglehub download → train → cache
     app.state.classifier = clf
     app.state.queue      = PriorityQueueSingleton.get_instance()
     print("[Startup] ✓ Server ready.\n")
@@ -170,14 +170,16 @@ _MED = re.compile(
 )
 
 def compute_urgency(text: str) -> tuple[str, float]:
+    """Return (label, score) where score ∈ [0, 1]."""
     h = len(_HIGH.findall(text))
     m = len(_MED.findall(text))
+
     if h >= 2:
-        return "HIGH",   round(min(0.95, 0.75 + 0.05 * h), 3)
+        return "HIGH",   round(min(0.95, 0.75 + 0.05 * h),  3)
     if h == 1:
-        return "HIGH",   round(min(0.74, 0.55 + 0.04 * m), 3)
+        return "HIGH",   round(min(0.74, 0.55 + 0.04 * m),  3)
     if m >= 2:
-        return "MEDIUM", round(min(0.54, 0.35 + 0.04 * m), 3)
+        return "MEDIUM", round(min(0.54, 0.35 + 0.04 * m),  3)
     if m == 1:
         return "MEDIUM", 0.30
     return "LOW", 0.10

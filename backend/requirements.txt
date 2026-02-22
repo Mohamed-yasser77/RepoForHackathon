@@ -10,3 +10,12 @@ mlflow
 matplotlib
 seaborn
 scipy
+
+# Milestone 2
+torch
+transformers
+sentence-transformers
+arq
+redis[hiredis]
+httpx
+pydantic-settings
