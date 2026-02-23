@@ -73,11 +73,19 @@ class Settings(BaseSettings):
         default=30,
         description="Seconds in OPEN state before attempting HALF_OPEN probe",
     )
+    M3_FALLBACK_ONLY: bool = Field(
+        default=False,
+        description="If True, skip loading Transformer models and use M1 fallback immediately (RAM saving)",
+    )
 
     # ── Server ────────────────────────────────────────────────────────────
     APP_NAME: str = "Smart-Support Milestone 3"
     APP_VERSION: str = "3.0.0"
     LOG_LEVEL: str = "INFO"
+    CORS_ALLOWED_ORIGINS: str = Field(
+        default="",
+        description="Comma-separated list of allowed CORS origins",
+    )
     CORS_ALLOWED_ORIGINS: str = Field(
         default="",
         description="Comma-separated list of allowed CORS origins",
