@@ -33,7 +33,7 @@ export default function DashboardPage() {
                     {hLoading ? (
                         <div className="skeleton" style={{ height: 48, borderRadius: 12 }} />
                     ) : health ? (
-                        <CircuitBreakerBadge state={health.circuit_breaker_state} />
+                        <CircuitBreakerBadge state={health.circuit_breaker_state ?? 'CLOSED'} />
                     ) : (
                         <div className="circuit-breaker" style={{ borderColor: 'rgba(255,91,91,0.3)', background: 'rgba(255,50,50,0.1)', color: '#FF5B5B' }}>
                             <WifiOff size={14} /> Cannot reach API — {hError}
