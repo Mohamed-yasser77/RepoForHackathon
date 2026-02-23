@@ -17,6 +17,7 @@ import hashlib
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, List
 
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -57,10 +58,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow Next.js frontend running on localhost:3000
+# CORS — allow Next.js frontend
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Add production origins from environment variable if present
+env_origins = os.getenv("CORS_ALLOWED_ORIGINS")
+if env_origins:
+    # Expecting a comma-separated list: "https://my-app.vercel.app,https://api.my-app.com"
+    allowed_origins.extend([o.strip() for o in env_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

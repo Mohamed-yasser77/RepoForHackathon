@@ -26,6 +26,7 @@ from typing import Any, Dict
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import urlparse
 
 from app.config import settings
@@ -113,6 +114,25 @@ app = FastAPI(
     version=settings.APP_VERSION,
     lifespan=lifespan,
 )
+
+# ─── CORS Middleware ─────────────────────────────────────────────────────────
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+if settings.CORS_ALLOWED_ORIGINS:
+    extra_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+    allowed_origins.extend(extra_origins)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL, logging.INFO),

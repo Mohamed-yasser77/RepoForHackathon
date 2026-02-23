@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "Smart-Support Milestone 3"
     APP_VERSION: str = "3.0.0"
     LOG_LEVEL: str = "INFO"
+    CORS_ALLOWED_ORIGINS: str = Field(
+        default="",
+        description="Comma-separated list of allowed CORS origins",
+    )
 
     model_config = {
         "env_file": ".env",

@@ -14,7 +14,7 @@ import type {
     ReleaseResponse,
 } from '@/types';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
 
 const api = axios.create({
     baseURL: BASE_URL,
