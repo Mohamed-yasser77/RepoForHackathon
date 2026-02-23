@@ -86,10 +86,6 @@ class Settings(BaseSettings):
         default="",
         description="Comma-separated list of allowed CORS origins",
     )
-    CORS_ALLOWED_ORIGINS: str = Field(
-        default="",
-        description="Comma-separated list of allowed CORS origins",
-    )
 
     model_config = {
         "env_file": ".env",
