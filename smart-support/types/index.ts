@@ -27,18 +27,18 @@ export interface TicketResponse {
     status: 'accepted' | 'duplicate';
     message: string;
     duplicate: boolean;
-    // enriched classification fields
-    category: string;
-    urgency: string;
-    urgency_score: number;
-    confidence: number;
-    queue_position: number;
-    classifier_votes: Record<string, number>;
+    // enriched classification fields (optional for async M3)
+    category?: string;
+    urgency?: string;
+    urgency_score?: number;
+    confidence?: number;
+    queue_position?: number;
+    classifier_votes?: Record<string, number>;
     timestamp: number;
     // routing fields (CSP)
     routed_to: string | null;
     routing_score: number;
-    routing_reason: string | null;
+    routing_reason?: string | null;
 }
 
 // ── Incidents ─────────────────────────────────────────────────────────────────

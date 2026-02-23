@@ -67,37 +67,53 @@ export default function TicketForm({ onClose }: TicketFormProps) {
                         
                         {!result.duplicate && (
                             <div style={{ marginBottom: 20 }}>
-                                <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-                                    Our AI has successfully routed your ticket.
-                                </p>
-                                <div className="grid-2-rows" style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 16, border: '1px solid var(--border-subtle)', textAlign: 'left' }}>
-                                    <div className="flex justify-between items-center mb-3">
-                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>AI Category</span>
-                                        <span className="badge badge-purple" style={{ margin: 0 }}>{result.category}</span>
+                                {result.category ? (
+                                    <>
+                                        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+                                            Our AI has successfully routed your ticket.
+                                        </p>
+                                        <div className="grid-2-rows" style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 16, border: '1px solid var(--border-subtle)', textAlign: 'left' }}>
+                                            <div className="flex justify-between items-center mb-3">
+                                                <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>AI Category</span>
+                                                <span className="badge badge-purple" style={{ margin: 0 }}>{result.category}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center mb-3">
+                                                <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Urgency Level</span>
+                                                <span className={`badge ${result.urgency === 'HIGH' ? 'badge-red' : result.urgency === 'MEDIUM' ? 'badge-orange' : 'badge-green'}`} style={{ margin: 0 }}>
+                                                    {result.urgency}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center mb-3">
+                                                <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Queue Position</span>
+                                                <span className="font-mono" style={{ fontWeight: 700, color: 'var(--accent-green)' }}>#{result.queue_position}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center mb-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 12 }}>
+                                                <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Assigned Agent</span>
+                                                <span style={{ fontWeight: 600, color: result.routed_to ? 'var(--text-primary)' : 'var(--accent-orange)' }}>
+                                                    {result.routed_to || 'Pending Pool'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>CSP Match Score</span>
+                                                <span className="font-mono" style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
+                                                    {(result.routing_score * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div style={{ background: 'rgba(56,189,248,0.05)', borderRadius: 12, padding: 20, border: '1px solid rgba(56,189,248,0.2)', textAlign: 'center' }}>
+                                        <div className="spin mb-3" style={{ display: 'inline-block' }}>
+                                            <Loader size={24} color="var(--accent-blue)" />
+                                        </div>
+                                        <p style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
+                                            Queued for AI Processing
+                                        </p>
+                                        <p style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+                                            The Milestone 3 orchestrator will process this ticket in the background.
+                                        </p>
                                     </div>
-                                    <div className="flex justify-between items-center mb-3">
-                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Urgency Level</span>
-                                        <span className={`badge ${result.urgency === 'HIGH' ? 'badge-red' : result.urgency === 'MEDIUM' ? 'badge-orange' : 'badge-green'}`} style={{ margin: 0 }}>
-                                            {result.urgency}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center mb-3">
-                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Queue Position</span>
-                                        <span className="font-mono" style={{ fontWeight: 700, color: 'var(--accent-green)' }}>#{result.queue_position}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center mb-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 12 }}>
-                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>Assigned Agent</span>
-                                        <span style={{ fontWeight: 600, color: result.routed_to ? 'var(--text-primary)' : 'var(--accent-orange)' }}>
-                                            {result.routed_to || 'Pending Pool'}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-secondary text-xs uppercase" style={{ letterSpacing: '0.05em', fontSize: '10px' }}>CSP Match Score</span>
-                                        <span className="font-mono" style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>
-                                            {(result.routing_score * 100).toFixed(1)}%
-                                        </span>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         )}
 
