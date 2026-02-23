@@ -155,7 +155,7 @@ async def health_check():
         if redis_ok:
             cb_state = await app.state.redis.get("circuit_breaker:state")
             if cb_state:
-                app.state.circuit_state = cb_state.decode("utf-8")
+                app.state.circuit_state = cb_state
     except Exception:
         redis_status = "unreachable"
 
